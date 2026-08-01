@@ -126,10 +126,14 @@ the feedforward seeing τ(1+ε) while the plant sees τ:
 | 0.00 | 0.11 |
 | +0.20 | 0.00 |
 
-With the load *under*-measured by 20% the feedforward dip (0.24%) is a
-statistical tie with the feedback-only LQR (0.26%). Feedforward's margin
-over the LQR is bought entirely with load knowledge; with ±20% measurement
-error the two are interchangeable on this plant.
+With the load *under*-measured by 20% the feedforward dip (0.24%) ties the
+feedback-only LQR (0.26%) on depth — and the shapes favour the LQR: it
+dips sharply but snaps back in ~0.1 s, while the under-measured
+feedforward drags a slower recovery tail. Feedforward's margin over the
+LQR is bought entirely with load knowledge; at 20% measurement error it
+has none left:
+
+![Feedforward with load-measurement error vs LQR](figs/ff_error.png)
 
 ### Startup and load-step response (zoom)
 

@@ -200,11 +200,13 @@ fprintf('\ndt check (LQR, nominal): rise %.4f @ dt=%.0e, %.4f @ dt=%.0e\n', ...
 % itself: the feedforward sees tau*(1+eps) while the plant sees tau.
 fprintf('\nFF load-measurement error (filter clogging):\n%8s %8s %10s\n', ...
         'eps','dip[%]','rec[0.5%]');
-for ep = [-0.2 0 0.2]
-    y = simulate(tau_d(2,:), dt, N, 'FF', A,B,E,C, Kp,Ki,alpha_ff,[], ...
-                 Q_ref,w_ref,R,Kt,Ke,Bd,Vmax, 1+ep);
-    [d,rec] = dipMetrics(y,t,Q_target,t_dist,0.005);
-    fprintf('%8.2f %8.3f %10.3f\n', ep, d, rec);
+eps_ff = [-0.2 0 0.2];
+Yff = zeros(numel(eps_ff), N);
+for i = 1:numel(eps_ff)
+    Yff(i,:) = simulate(tau_d(2,:), dt, N, 'FF', A,B,E,C, Kp,Ki,alpha_ff,[], ...
+                        Q_ref,w_ref,R,Kt,Ke,Bd,Vmax, 1+eps_ff(i));
+    [d,rec] = dipMetrics(Yff(i,:),t,Q_target,t_dist,0.005);
+    fprintf('%8.2f %8.3f %10.3f\n', eps_ff(i), d, rec);
 end
 
 %% Plots
@@ -259,6 +261,27 @@ title('Load step at t = 1.5 s (zoom)');
 
 delete(findall(f3,'Type','AxesToolbar'));
 exportgraphics(f3, 'figs/zoom.png', 'Resolution', 150, 'BackgroundColor','white');
+
+%% Feedforward measurement error vs the feedback-only LQR
+% the point of this figure: the eps = -0.2 feedforward curve lands on top
+% of the LQR's dip, so FF's advantage is exactly its load knowledge
+f4 = figure('Color','w','Position',[50 50 700 420]);
+if isprop(f4,'Theme'), f4.Theme = 'light'; end
+hold on; grid on;
+plot(t, Yff(2,:), 'g',   'LineWidth',1.4);
+plot(t, Yff(1,:), 'g--', 'LineWidth',1.4);
+plot(t, Yff(3,:), 'g:',  'LineWidth',1.4);
+plot(t, squeeze(Y(2,3,:)), 'r--', 'LineWidth',1.4);
+yline(Q_target,'k:','Target');
+zw = t >= 1.4 & t <= 2.2;
+yy = [Yff(:,zw); squeeze(Y(2,3,zw)).'];
+xlim([1.4 2.2]); ylim([min(yy(:))-0.1, max(yy(:))+0.1]);
+xlabel('Time [s]'); ylabel('Flow [m^3/h]');
+title('Load step: feedforward seeing \tau(1+\epsilon) vs LQR');
+legend({'FF, \epsilon = 0','FF, \epsilon = -0.2','FF, \epsilon = +0.2', ...
+        'LQR (Bryson)'}, 'Location','SouthEast');
+delete(findall(f4,'Type','AxesToolbar'));
+exportgraphics(f4, 'figs/ff_error.png', 'Resolution', 150, 'BackgroundColor','white');
 
 %% Feedforward scaling sweep
 a = 0.5:0.02:1.0;
