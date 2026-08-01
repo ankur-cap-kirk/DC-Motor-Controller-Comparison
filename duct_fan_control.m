@@ -88,13 +88,15 @@ Rw = 1/max_u^2;
 
 K_lqr = lqr(Aa, Ba, Qw, Rw);
 fprintf('K_lqr = [%.4f %.4f %.4e]\n', K_lqr);
-fprintf('LQR closed-loop poles: %.1f, %.1f, %.1f\n', eig(Aa - Ba*K_lqr));
+% NB: fprintf with %f drops imaginary parts silently - print poles through
+% poleStr so a complex pair can't masquerade as a repeated real pole
+fprintf('LQR closed-loop poles: %s\n', poleStr(eig(Aa - Ba*K_lqr)));
 
 % the naive design, kept in the comparison on purpose: equal weights leave
 % the integral state effectively unweighted and its closed-loop pole lands
 % at ~ -1e-4 rad/s, so it never tracks on any useful timescale
 K_naive = lqr(Aa, Ba, eye(3), 1);
-fprintf('naive LQR closed-loop poles: %.1f, %.2f, %.4f\n', eig(Aa - Ba*K_naive));
+fprintf('naive LQR closed-loop poles: %s\n', poleStr(eig(Aa - Ba*K_naive)));
 
 %% PI + feedforward
 % tuned on this plant (Kp x Ki grid, scenario 1); Ki/Kp = 8 puts the PI
@@ -192,6 +194,19 @@ y2 = simulate(zeros(1,N2), dt2, N2, 'LQR', A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
 fprintf('\ndt check (LQR, nominal): rise %.4f @ dt=%.0e, %.4f @ dt=%.0e\n', ...
         riseTime(y1,t,Q_target), dt, riseTime(y2,t2,Q_target), dt2);
 
+%% Feedforward sensitivity to load-measurement error
+% the alpha sweep below scales the whole feedforward term - that is a
+% feedforward-AUTHORITY sweep. this tests the measured-load assumption
+% itself: the feedforward sees tau*(1+eps) while the plant sees tau.
+fprintf('\nFF load-measurement error (filter clogging):\n%8s %8s %10s\n', ...
+        'eps','dip[%]','rec[0.5%]');
+for ep = [-0.2 0 0.2]
+    y = simulate(tau_d(2,:), dt, N, 'FF', A,B,E,C, Kp,Ki,alpha_ff,[], ...
+                 Q_ref,w_ref,R,Kt,Ke,Bd,Vmax, 1+ep);
+    [d,rec] = dipMetrics(y,t,Q_target,t_dist,0.005);
+    fprintf('%8.2f %8.3f %10.3f\n', ep, d, rec);
+end
+
 %% Plots
 if ~exist('figs','dir'), mkdir('figs'); end
 cols = {'b','g','r--','m-.'};
@@ -268,7 +283,8 @@ exportgraphics(f2, 'figs/ff_sweep.png', 'Resolution', 150, 'BackgroundColor','wh
 
 
 function y = simulate(tau_d, dt, N, mode, A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
-                      Q_ref, w_ref, R, Kt, Ke, Bd, Vmax)
+                      Q_ref, w_ref, R, Kt, Ke, Bd, Vmax, ff_scale)
+    if nargin < 20, ff_scale = 1; end   % load-measurement error, FF only
     x = [0;0]; xi = 0; y = zeros(1,N);
 
     for k = 1:N-1
@@ -281,7 +297,7 @@ function y = simulate(tau_d, dt, N, mode, A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
             case 'FF'
                 % inverse dynamics at the reference; nominal drag Bd*w_ref
                 % plus the measured disturbance torque
-                V_ff = R*((Bd*w_ref + tau)/Kt) + Ke*w_ref;
+                V_ff = R*((Bd*w_ref + ff_scale*tau)/Kt) + Ke*w_ref;
                 u = Kp*e + Ki*xi + alpha_ff*V_ff;
             case 'LQR'
                 u = -K_lqr*[x; xi];
@@ -317,6 +333,19 @@ end
 function ts = settleTime(y, t, target, tol)
     out = find(abs(y-target) > tol*target);
     if isempty(out), ts = 0; else, ts = t(out(end)); end
+end
+
+
+function s = poleStr(p)
+    s = '';
+    for z = p.'
+        if imag(z) == 0
+            s = [s sprintf('%.6g, ', real(z))]; %#ok<AGROW>
+        else
+            s = [s sprintf('%.6g%+.6gj, ', real(z), imag(z))]; %#ok<AGROW>
+        end
+    end
+    s = s(1:end-2);
 end
 
 
