@@ -1,0 +1,60 @@
+Kt = 0.0286 N.m/A vs Ke = 0.0286 V.s/rad  (agree to 0.03%)
+operating point: 9.0 mNm, 0.314 A, 14.22 V  (rated: 20.5 mNm, 0.846 A, 24 V)
+open-loop poles: -27038.5, -8.20
+rank(ctrb) = 2, rank(obsv) = 2
+K_lqr = [3.6229 0.9452 -8.5714e+05]
+LQR closed-loop poles: -40612.2, -78.9, -78.9
+naive LQR closed-loop poles: -27301.5, -239.46, -0.0001
+dt = 2.0e-05, Euler stability limit (closed loop) = 4.92e-05
+
+--- Nominal load ---
+ctrl                 rise    OS[%]     settle         ss
+Standard PI         0.111    -0.00      0.308      85.00
+Feedforward PI      0.086    -0.00      0.124      85.00
+LQR (Bryson)        0.086     0.04      0.115      85.00
+LQR (Q = I)           NaN   -99.98      4.000       0.02
+
+--- Filter clogging ---
+ctrl                 rise    OS[%]     settle         ss   dip[%]  rec[0.5%]
+Standard PI         0.111    -0.00      0.308      85.02     0.76      0.113
+Feedforward PI      0.086    -0.00      0.124      85.00     0.11      0.000
+LQR (Bryson)        0.086     0.04      0.115      85.00     0.26      0.000
+LQR (Q = I)           NaN   -99.99      1.500       0.02        -          -
+
+--- Gusty inlet ---
+ctrl                 rise    OS[%]     settle         ss
+Standard PI         0.113     0.43      0.316      85.06
+Feedforward PI      0.087     0.06      0.126      85.01
+LQR (Bryson)        0.087     0.15      0.116      85.00
+LQR (Q = I)           NaN   -97.17      4.000       1.17
+
+dt check (LQR, nominal): rise 0.0856 @ dt=2e-05, 0.0855 @ dt=5e-06
+
+feedforward sweep:
+   alpha     rise    OS[%]
+    0.50    0.090    -0.00
+    0.52    0.090    -0.00
+    0.54    0.089    -0.00
+    0.56    0.089    -0.00
+    0.58    0.089    -0.00
+    0.60    0.088    -0.00
+    0.62    0.088    -0.00
+    0.64    0.088    -0.00
+    0.66    0.087    -0.00
+    0.68    0.087    -0.00
+    0.70    0.087    -0.00
+    0.72    0.087    -0.00
+    0.74    0.087    -0.00
+    0.76    0.086    -0.00
+    0.78    0.086    -0.00
+    0.80    0.086    -0.00
+    0.82    0.086    -0.00
+    0.84    0.086    -0.00
+    0.86    0.086    -0.00
+    0.88    0.086    -0.00
+    0.90    0.086     0.08
+    0.92    0.086     0.20
+    0.94    0.086     0.34
+    0.96    0.085     0.48
+    0.98    0.085     0.63
+    1.00    0.085     0.78
