@@ -111,9 +111,23 @@ which is the point of including it. No controller was tuned to make any of
 them win; the PI baseline was tuned first, to be stable and
 non-oscillatory, and left alone.
 
-Figures: `figs/comparison.png` (all scenarios), `figs/zoom.png` (startup
-transient and load-step dip, where the differences are actually visible),
-`figs/ff_sweep.png` (feedforward scaling tradeoff).
+### Startup and load-step response (zoom)
+
+The naive LQR runs along the floor of the left panel; the right panel is
+where the three tracking controllers actually differ.
+
+![Startup transient and load-step dip](figs/zoom.png)
+
+### All scenarios
+
+![Controller comparison, all scenarios](figs/comparison.png)
+
+### Feedforward scaling tradeoff
+
+Rise time reaches its saturation-limited floor by α ≈ 0.86; overshoot
+appears from α ≈ 0.90. α = 0.86 is the knee.
+
+![Feedforward scaling sweep](figs/ff_sweep.png)
 
 ## How to run
 
