@@ -10,7 +10,7 @@
 % linearised as viscous drag about the operating point; feedforward assumes
 % a measured load torque.
 %
-% A. Guruprasad, July 2026
+% A. Guruprasad, June 2026
 
 clear; clc; close all; rng(0);
 
