@@ -94,16 +94,48 @@ fprintf('LQR closed-loop poles: %s\n', poleStr(eig(Aa - Ba*K_lqr)));
 
 % the naive design, kept in the comparison on purpose: equal weights leave
 % the integral state effectively unweighted and its closed-loop pole lands
-% at ~ -1e-4 rad/s, so it never tracks on any useful timescale
+% at -5.6e-5 rad/s, so it never tracks on any useful timescale
 K_naive = lqr(Aa, Ba, eye(3), 1);
 fprintf('naive LQR closed-loop poles: %s\n', poleStr(eig(Aa - Ba*K_naive)));
 
-%% PI + feedforward
-% tuned on this plant (Kp x Ki grid, scenario 1); Ki/Kp = 8 puts the PI
-% zero on the mechanical pole at 8.2 rad/s. the old gains from the pump
-% project don't transfer - different plant, different error scale.
-Kp = 4000;
-Ki = 32000;
+%% Luenberger observer - estimates current from the flow measurement
+% (A,C) is observable (checked above), so full state feedback does not
+% require a current sensor. Observer poles chosen faster than the
+% controller's dominant pair but not so split that the slow mode lags
+% through startup saturation - see the pole sweep below.
+L_obs = place(A', C', [-2000, -20000])';
+fprintf('L_obs = [%.4e %.4e]\n', L_obs);
+fprintf('observer poles: %s\n', poleStr(eig(A - L_obs*C)));
+
+%% Pole placement with static prefilter - the no-integrator strawman
+% Bass-Gura placement at the LQR's pole real parts, u = -K_pp*x + G_pp*ref
+% with G_pp a static gain inverting the nominal DC gain. Tracks exactly on
+% the nominal plant; has no mechanism to notice the plant changed, so any
+% load deviation becomes a permanent offset - the case for the integral
+% state, shown rather than asserted.
+K_pp = place(A, B, [-40612, -78.89]);
+G_pp = -1/(C/(A - B*K_pp)*B);
+fprintf('K_pp = [%.4f %.4f], G_pp = %.4e\n', K_pp, G_pp);
+
+%% PI design - analytic, from the reduced first-order plant
+% Timescale separation (electrical pole 3300x faster than mechanical)
+% justifies di/dt -> 0, giving P(s) = kdc/(tau*s + 1) with the back-EMF
+% damping Kt*Ke/R folded into the effective friction. PI then yields an
+% exactly second-order closed loop:
+%     Kp = (2*zeta*wn*tau - 1)/kdc
+%     Ki = wn^2*tau/kdc
+% Note this ignores input saturation, which does bind during startup;
+% the design holds because saturation clears early.
+B_eff = Bd + Kt*Ke/R;          % 1.360e-4 - 84% of it is electrical
+tau_m = J/B_eff;               % 0.1219 s  (1/tau_m = 8.20 rad/s)
+kdc   = K_out*Kt/(R*B_eff);    % 1.660e-3 m^3/s per V
+
+zeta_d = 1.50;  wn_d = 20.9;   % deliberately overdamped baseline
+Kp = (2*zeta_d*wn_d*tau_m - 1)/kdc;
+Ki = wn_d^2*tau_m/kdc;
+fprintf('PI design: zeta = %.2f, wn = %.1f -> Kp = %.0f, Ki = %.0f\n', ...
+        zeta_d, wn_d, Kp, Ki);
+
 alpha_ff = 0.86;    % knee of the sweep below: rise time is on the
                     % saturation floor there, overshoot starts ~0.90
 
@@ -111,7 +143,8 @@ alpha_ff = 0.86;    % knee of the sweep below: rise time is on the
 % forward Euler needs dt < 2/|fastest pole|, and the binding pole is the
 % closed-loop electrical one (~4e4 rad/s under LQR), not eig(A)
 A_pi_cl = [A - B*Kp*C, B*Ki; -C, 0];
-p_all   = [eig(A); eig(Aa - Ba*K_lqr); eig(Aa - Ba*K_naive); eig(A_pi_cl)];
+p_all   = [eig(A); eig(Aa - Ba*K_lqr); eig(Aa - Ba*K_naive); eig(A_pi_cl); ...
+           eig(A - L_obs*C); eig(A - B*K_pp)];
 dt_lim  = 2/max(abs(real(p_all)));
 
 dt    = 2e-5;
@@ -138,9 +171,10 @@ g = filter(gust_lp, [1, -(1-gust_lp)], randn(1,N));
 tau_d(3,:) = 1.5e-3*sin(3*t) + 6e-4*(g/std(g));
 
 names  = {'Nominal load','Filter clogging','Gusty inlet'};
-ctrls  = {'PI','FF','LQR','LQR'};
-labels = {'Standard PI','Feedforward PI','LQR (Bryson)','LQR (Q = I)'};
-gains  = {[], [], K_lqr, K_naive};
+ctrls  = {'PI','FF','LQR','LQR','OBS','PP'};
+labels = {'Standard PI','Feedforward PI','LQR (Bryson)','LQR (Q = I)', ...
+          'LQR + observer','Pole place + prefilter'};
+gains  = {[], [], K_lqr, K_naive, K_lqr, K_pp};
 nc     = numel(ctrls);
 
 %% Run
@@ -149,7 +183,7 @@ for s = 1:3
     for c = 1:nc
         Y(s,c,:) = simulate(tau_d(s,:), dt, N, ctrls{c}, A, B, E, C, ...
                             Kp, Ki, alpha_ff, gains{c}, Q_ref, w_ref, ...
-                            R, Kt, Ke, Bd, Vmax);
+                            R, Kt, Ke, Bd, Vmax, 1, L_obs);
     end
 end
 
@@ -161,14 +195,14 @@ for s = 1:3
     if s == 2, i_end = find(t < t_dist(1), 1, 'last'); else, i_end = N; end
 
     fprintf('\n--- %s ---\n', names{s});
-    fprintf('%-16s %8s %8s %10s %10s', 'ctrl','rise','OS[%]','settle','ss');
+    fprintf('%-22s %8s %8s %10s %10s', 'ctrl','rise','OS[%]','settle','ss');
     if s == 2, fprintf(' %8s %10s','dip[%]','rec[0.5%]'); end
     fprintf('\n');
 
     for c = 1:nc
         y  = squeeze(Y(s,c,:))';
         yw = y(1:i_end);  tw = t(1:i_end);
-        fprintf('%-16s %8.3f %8.2f %10.3f %10.2f', labels{c}, ...
+        fprintf('%-22s %8.3f %8.2f %10.3f %10.2f', labels{c}, ...
                 riseTime(yw,tw,Q_target), (max(yw)-Q_target)/Q_target*100, ...
                 settleTime(yw,tw,Q_target,0.02), mean(y(end-round(1/dt):end)));
         if s == 2
@@ -184,6 +218,14 @@ for s = 1:3
         fprintf('\n');
     end
 end
+
+%% Pole placement under load - the permanent offset, stated exactly
+% mean over the last 0.5 s of the disturbance window, fully settled onto
+% the shifted equilibrium the static prefilter cannot correct
+y_pp = squeeze(Y(2,6,:))';
+i_on = t >= t_dist(2)-0.5 & t < t_dist(2);
+fprintf('\nPP under 4 mNm load: %.3f m^3/h (%.2f%% below target)\n', ...
+        mean(y_pp(i_on)), (Q_target - mean(y_pp(i_on)))/Q_target*100);
 
 %% dt convergence check - results should not move
 y1 = simulate(tau_d(1,:), dt, N, 'LQR', A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
@@ -209,9 +251,68 @@ for i = 1:numel(eps_ff)
     fprintf('%8.2f %8.3f %10.3f\n', eps_ff(i), d, rec);
 end
 
+%% PI gain grid - shows the baseline choice was deliberate
+fprintf('\nPI gain grid (nominal load):\n%8s %9s %8s %8s %9s\n', ...
+        'Kp','Ki','rise','OS[%]','settle');
+for Kp_t = [2000 4000 8000]
+    for ratio = [4 8 16]
+        Ki_t = Kp_t*ratio;
+        yg = simulate(tau_d(1,:), dt, N, 'PI', A,B,E,C, Kp_t,Ki_t, ...
+                      alpha_ff,[], Q_ref,w_ref,R,Kt,Ke,Bd,Vmax);
+        fprintf('%8d %9d %8.4f %8.3f %9.4f\n', Kp_t, Ki_t, ...
+                riseTime(yg,t,Q_target), (max(yg)-Q_target)/Q_target*100, ...
+                settleTime(yg,t,Q_target,0.02));
+    end
+end
+
+%% Parameter sensitivity - J and Bd at +/-50%, controllers held fixed
+% rise from the pre-disturbance window, dip from the +4 mNm step, so one
+% run per corner backs both the rise-span and dip-ordering claims
+fprintf('\nSensitivity corners (controllers at nominal design):\n');
+fprintf('%6s %6s %9s %9s %9s %9s %9s %9s\n', 'J','Bd', ...
+        'PI rise','FF rise','LQR rise','PI dip','FF dip','LQR dip');
+for fJ = [0.5 1.5]
+    for fB = [0.5 1.5]
+        Jc = J*fJ;  Bc = Bd*fB;
+        Ac = [-R/L, -Ke/L; Kt/Jc, -Bc/Jc];
+        Ec = [0; -1/Jc];
+        rr = zeros(1,3);  dd = zeros(1,3);
+        modes = {'PI','FF','LQR'};
+        for mi = 1:3
+            yc = simulate(tau_d(2,:), dt, N, modes{mi}, Ac,B,Ec,C, ...
+                          Kp,Ki,alpha_ff,K_lqr, Q_ref,w_ref, ...
+                          R,Kt,Ke,Bc,Vmax);
+            i_pre  = find(t < t_dist(1), 1, 'last');
+            rr(mi) = riseTime(yc(1:i_pre), t(1:i_pre), Q_target);
+            dd(mi) = dipMetrics(yc, t, Q_target, t_dist, 0.005);
+        end
+        fprintf('%6.2f %6.2f %9.3f %9.3f %9.3f %9.3f %9.3f %9.3f\n', ...
+                fJ, fB, rr, dd);
+    end
+end
+
+%% Observer pole placement sweep
+% on the nominal scenario the sweep is degenerate by construction: the
+% observer has the exact model, the same initial state, and the same
+% delivered input u_sat, so the innovation is identically zero and L_obs
+% never acts. pole choice only matters when the estimate is wrong, and
+% the only error source here is the unmodeled load disturbance - so the
+% sweep runs the filter-clogging step. all candidates respect the Euler
+% limit (|p| < 2/dt = 1e5); the last pair is deliberately pathological:
+% one pole slower than the controller's dominant pair, one 1.5x its fastest
+fprintf('\nObserver pole placement (filter clogging):\n%22s %8s %10s\n', ...
+        'poles','dip[%]','rec[0.5%]');
+for pd = {[-300 -3000], [-800 -8000], [-2000 -20000], [-300 -1.5*40612]}
+    Lo = place(A', C', pd{1})';
+    yo = simulate(tau_d(2,:), dt, N, 'OBS', A,B,E,C, Kp,Ki,alpha_ff, ...
+                  K_lqr, Q_ref,w_ref,R,Kt,Ke,Bd,Vmax, 1, Lo);
+    [d,rec] = dipMetrics(yo,t,Q_target,t_dist,0.005);
+    fprintf('%10.0f %11.0f %8.3f %10.3f\n', pd{1}, d, rec);
+end
+
 %% Plots
 if ~exist('figs','dir'), mkdir('figs'); end
-cols = {'b','g','r--','m-.'};
+cols = {'b','g','r--','m-.','c','k--'};
 
 f1 = figure('Color','w','Position',[50 50 1100 850]);
 if isprop(f1,'Theme'), f1.Theme = 'light'; end     % R2025b batch defaults to dark
@@ -251,10 +352,11 @@ for c = 1:nc
     plot(t, squeeze(Y(2,c,:)), cols{c}, 'LineWidth',1.4);
 end
 yline(Q_target,'k:','Target');
-% y-limits from the three tracking controllers; the naive LQR sits near
-% zero flow and just exits the frame, which is the point
+% y-limits from the tracking controllers (all but the naive LQR, which
+% sits near zero flow and just exits the frame - that is the point);
+% including PP keeps its permanent post-step offset in frame
 zwin = t >= 1.3 & t <= 2.3;
-yz = Y(2,1:3,zwin);
+yz = Y(2,[1 2 3 5 6],zwin);
 xlim([1.3 2.3]); ylim([min(yz(:))-0.3, max(yz(:))+0.3]);
 ylabel('Flow [m^3/h]'); xlabel('Time [s]');
 title('Load step at t = 1.5 s (zoom)');
@@ -306,13 +408,21 @@ exportgraphics(f2, 'figs/ff_sweep.png', 'Resolution', 150, 'BackgroundColor','wh
 
 
 function y = simulate(tau_d, dt, N, mode, A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
-                      Q_ref, w_ref, R, Kt, Ke, Bd, Vmax, ff_scale)
+                      Q_ref, w_ref, R, Kt, Ke, Bd, Vmax, ff_scale, L_obs)
     if nargin < 20, ff_scale = 1; end   % load-measurement error, FF only
-    x = [0;0]; xi = 0; y = zeros(1,N);
+    if nargin < 21, L_obs = []; end     % observer gain, OBS only
+    x = [0;0]; xhat = [0;0]; xi = 0; y = zeros(1,N);
+
+    if strcmp(mode,'PP')
+        % static prefilter inverting the nominal closed-loop DC gain;
+        % the K_lqr slot carries the 1x2 state-feedback gain K_pp here
+        G_pp = -1/(C/(A - B*K_lqr)*B);
+    end
 
     for k = 1:N-1
-        tau = tau_d(k);
-        e   = Q_ref - C*x;
+        tau    = tau_d(k);
+        y_meas = C*x;               % the only measurement available
+        e      = Q_ref - y_meas;
 
         switch mode
             case 'PI'
@@ -324,6 +434,10 @@ function y = simulate(tau_d, dt, N, mode, A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
                 u = Kp*e + Ki*xi + alpha_ff*V_ff;
             case 'LQR'
                 u = -K_lqr*[x; xi];
+            case 'OBS'
+                u = -K_lqr*[xhat; xi];      % control from the ESTIMATE
+            case 'PP'
+                u = -K_lqr*x + G_pp*Q_ref;  % no integral state at all
         end
 
         u_sat = min(Vmax, max(0,u));
@@ -331,7 +445,15 @@ function y = simulate(tau_d, dt, N, mode, A,B,E,C, Kp,Ki,alpha_ff,K_lqr, ...
         % conditional integration - without this the integrator charges
         % through the startup clamp and dumps it as overshoot on release
         if ~(u_sat ~= u && e*(u - u_sat) > 0)
-            xi = xi + e*dt;
+            xi = xi + e*dt;                 % xi uses the real measurement
+        end
+
+        if strcmp(mode,'OBS')
+            % driven by u_sat (what the actuator delivered, not what was
+            % demanded) and with no E*tau term - the observer does not
+            % know the disturbance, which is the honest setup
+            innov = y_meas - C*xhat;
+            xhat  = xhat + (A*xhat + B*u_sat + L_obs*innov)*dt;
         end
 
         x = x + (A*x + B*u_sat + E*tau)*dt;

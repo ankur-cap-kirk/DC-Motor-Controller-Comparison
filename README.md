@@ -19,6 +19,12 @@ never tracks at all and the flow sits near zero. Bryson's rule with
 honestly chosen maxima turns the same architecture into the best
 controller in the set.
 
+Two further traces round out the set: an observer-based LQR that runs the
+full-state design from the flow sensor alone (see *Does the LQR really
+need two sensors?* below), and a pole-placement + static-prefilter design
+with no integral state, kept as a second strawman (see *Why the integral
+state?*).
+
 ## Hardware
 
 **Motor — FAULHABER 2342 S 024 CR** (24 V, graphite commutation), all values
@@ -58,8 +64,14 @@ States x = [current; shaft speed], input u = terminal voltage (saturated to
 [0, 24] V), disturbance τ_d = load-torque deviation from nominal [N·m],
 output y = airflow [m³/s].
 
-- **Standard PI** on flow error, Kp = 4000, Ki = 32000 (tuned on this
-  plant; Ki/Kp = 8 places the PI zero on the mechanical pole at 8.2 rad/s).
+- **Standard PI** on flow error, Kp = 4002, Ki = 32076 — derived, not
+  tuned: the electrical pole is 3300× faster than the mechanical one, so
+  di/dt → 0 reduces the plant to first order (τ = 0.122 s,
+  k_dc = 1.66e-3 m³/s per V, with the back-EMF damping Kt·Ke/R folded into
+  the effective friction), and PI on a first-order plant gives an exactly
+  second-order closed loop — two specs (ζ = 1.5, ωn = 20.9 rad/s, a
+  deliberately overdamped baseline) determine both gains. The resulting
+  Ki/Kp = 8 places the PI zero on the mechanical pole at 8.2 rad/s.
   Anti-windup by conditional integration.
 - **Feedforward PI**: adds α·V_ff with V_ff from inverse dynamics at the
   reference, assuming a *measured* load torque. α = 0.86 chosen from a
@@ -74,6 +86,14 @@ output y = airflow [m³/s].
   `Q = eye(3), R = 1` weighting, included to demonstrate the failure mode.
   Closed-loop poles −27302, −239, **−5.6e-5** — the integral state is
   effectively unweighted and the "tracker" degenerates to a regulator.
+- **LQR + observer**: the same Bryson LQR running on the flow measurement
+  alone — a Luenberger observer (poles −2000, −20000) reconstructs the
+  armature current. The observer is driven by the *delivered* (saturated)
+  input and is given no knowledge of the load disturbance.
+- **Pole placement + prefilter**: state feedback placed at the LQR's pole
+  real parts (−40612, −78.9) with a static prefilter inverting the nominal
+  DC gain — no integral state anywhere in the loop. It tracks exactly on
+  the nominal plant and has no mechanism to notice the plant changed.
 
 Simulation: forward Euler at dt = 2e-5 s. The stability guard uses the
 fastest **closed-loop** pole (−40612 rad/s, LQR loop), not the open-loop
@@ -94,26 +114,37 @@ From `results.txt` (rise = 10–90%, settle to ±2%, dip and recovery to
 | Nominal | Feedforward PI | 0.086 | 0.00 | 0.124 | 85.00 | — | — |
 | Nominal | LQR (Bryson) | 0.086 | 0.04 | 0.115 | 85.00 | — | — |
 | Nominal | LQR (Q = I) | never | n/a | >4 | 0.02 | — | — |
-| Filter clogging | Standard PI | 0.111 | 0.00 | 0.308 | 85.02 | 0.76 | 0.113 |
+| Nominal | LQR + observer | 0.086 | 0.04 | 0.115 | 85.00 | — | — |
+| Nominal | Pole place + prefilter | 0.085 | 0.00 | 0.114 | 85.00 | — | — |
+| Filter clogging | Standard PI | 0.111 | 0.00 | 0.308 | 85.02 | 0.76 | 0.112 |
 | Filter clogging | Feedforward PI | 0.086 | 0.00 | 0.124 | 85.00 | 0.11 | 0 |
 | Filter clogging | LQR (Bryson) | 0.086 | 0.04 | 0.115 | 85.00 | 0.26 | 0 |
 | Filter clogging | LQR (Q = I) | never | n/a | >4 | 0.02 | n/a | n/a |
-| Gusty inlet | Standard PI | 0.113 | 0.43 | 0.316 | 85.06 | — | — |
+| Filter clogging | LQR + observer | 0.086 | 0.04 | 0.115 | 85.00 | 0.02 | 0 |
+| Filter clogging | Pole place + prefilter | 0.085 | 0.00 | 0.114 | 85.00 | 0.73 | never* |
+| Gusty inlet | Standard PI | 0.113 | 0.43 | 0.315 | 85.06 | — | — |
 | Gusty inlet | Feedforward PI | 0.087 | 0.06 | 0.126 | 85.01 | — | — |
 | Gusty inlet | LQR (Bryson) | 0.087 | 0.15 | 0.116 | 85.00 | — | — |
 | Gusty inlet | LQR (Q = I) | never | n/a | >4 | 1.17 | — | — |
+| Gusty inlet | LQR + observer | 0.087 | 0.04 | 0.116 | 85.00 | — | — |
+| Gusty inlet | Pole place + prefilter | 0.086 | 0.41 | 0.116 | 85.12 | — | — |
 
 (Dip/recovery are undefined for a controller that never reached the
-setpoint; overshoot likewise.)
+setpoint; overshoot likewise. \*The pole-placement design stays outside the
+±0.5% band for the entire 1.25 s the load is applied — the offset is
+permanent, not transient; see *Why the integral state?* below.)
 
 Reading: feedforward PI and Bryson-weighted LQR both hit the
 saturation-limited rise floor (~0.086 s) and never leave the ±0.5% band
 under the load step; standard PI is ~30% slower to rise and takes 0.11 s to
 recover. Under the continuously varying load the Bryson LQR holds the
-tightest steady state (85.00 vs the PI's 85.06). The naive-weighted LQR
-fails outright, which is the point of including it. No controller was
-tuned to make any of them win; the PI baseline was tuned first, to be
-stable and non-oscillatory, and left alone.
+tightest steady state (85.00 vs the PI's 85.06). The observer-based LQR
+matches the full-state LQR everywhere while reading one sensor instead of
+two. Pole placement + prefilter matches the LQR's rise on the nominal
+plant, then parks 0.73% low for as long as the load persists. The
+naive-weighted LQR fails outright, which is the point of including it. No
+controller was tuned to make any of them win; the PI baseline was designed
+first, to be stable and non-oscillatory, and left alone.
 
 **How much of feedforward PI's edge is the measured-load assumption?**
 Feedforward PI shows the smallest dip (0.11% vs the LQR's 0.26%), but it is
@@ -135,10 +166,65 @@ has none left:
 
 ![Feedforward with load-measurement error vs LQR](figs/ff_error.png)
 
+### Does the LQR really need two sensors?
+
+The full-state LQR reads armature current and shaft speed; the PI reads
+only flow. Since (A,C) is observable — the rank check has been in the
+script from the start — a Luenberger observer can reconstruct the current
+from the flow measurement alone. With observer poles at −2000 and −20000
+the estimated-state LQR matches full-state performance (0.086 s rise,
+0.115 s settling) on a single sensor, so the extra-sensor cost was a
+design choice, not a requirement.
+
+Two implementation details carry the result: the observer is driven by the
+input the actuator actually *delivered* (after saturation, not what the
+controller demanded), and it has no E·τ term — it does not know the load
+disturbance. That honesty has a curious consequence: under the load step
+the observer-based LQR dips less than full-state (0.02% vs 0.26%). This is
+not magic — the unmodeled load appears in the innovation, which steers the
+current estimate the way a disturbance estimator would, and the controller
+leans on the biased estimate in the helpful direction.
+
+Observer pole placement is not free, but its cost only shows where the
+estimate can actually be wrong. On the undisturbed startup the observer
+has the exact model, the same initial state, and the same delivered input,
+so the innovation is identically zero and *any* pole choice reproduces
+full-state behaviour — which is why the sweep below runs the
+filter-clogging step, the one scenario with an estimation-error source:
+
+| Observer poles | Dip [%] | Recover to ±0.5% [s] |
+|---|---|---|
+| −300, −3000 | 0.05 | 0.129 |
+| −800, −8000 | 0.01 | 0.057 |
+| **−2000, −20000** | **0.02** | **0** |
+| −300, −60918 | 4.42 | 0.053 |
+
+Too slow and the estimate lags the disturbance, stretching recovery past
+the standard PI's 0.112 s; badly split — one pole slower than the
+controller's dominant pair, one 1.5× its fastest — and the slow estimator
+mode turns a sub-0.3% event into a 4.4% excursion. The chosen pair is the
+only one that never leaves the band. There is a window, and locating it is
+part of the design.
+
+### Why the integral state? (pole placement + prefilter)
+
+Pole placement at the same dominant speeds with a static prefilter
+(u = −K·x + G·Q_ref, G inverting the nominal DC gain) tracks perfectly on
+the nominal plant: 85.000 m³/h, 0.085 s rise, no integral state needed.
+Then the filter clogs, and it settles at **84.378 m³/h — a permanent 0.73%
+error** for as long as the load persists. A static prefilter inverts the
+nominal plant once, at design time, so it has no mechanism to notice the
+plant changed; the integral state is that mechanism. This is the same
+lesson the naive `Q = eye(3)` trace teaches about weighting, one level up
+the architecture: both traces are correct designs by their own textbook
+recipe, and both fail for a reason the winning design explicitly handles.
+
 ### Startup and load-step response (zoom)
 
 The naive LQR runs along the floor of the left panel; the right panel is
-where the three tracking controllers actually differ.
+where the tracking controllers actually differ — note the pole-placement
+trace holding its permanent offset at 84.38 while everything with an
+integral state climbs back.
 
 ![Startup transient and load-step dip](figs/zoom.png)
 
@@ -161,26 +247,32 @@ MATLAB (tested on R2025b) with the Control System Toolbox:
 >> duct_fan_control
 ```
 
-Regenerates the console output (`results.txt` content), both figures, and
-the dt convergence check.
+Regenerates the console output (`results.txt` content), all four figures,
+and the dt convergence check.
 
 ## Limitations
 
 - LQR's classical margin guarantees do not survive input saturation; during
   the saturated startup the loop is effectively open.
-- LQR requires full state feedback (current and speed measurements); PI
-  needs only the flow output.
+- The PI baseline was designed conservatively (ζ = 1.5) for an
+  unambiguously non-oscillatory response, then held fixed. The gain grid in
+  the script shows a more aggressive pairing at the same Ki/Kp ratio
+  (Kp = 8000, Ki = 64000) reaches the same 0.086 s rise time as the LQR, so
+  the reported rise-time gap reflects this choice rather than a structural
+  advantage. The LQR's advantages in settling time, disturbance dip, and
+  behaviour under naive weighting are unaffected.
 - The feedforward path assumes the load torque is measured. The α sweep
   tests feedforward *authority*, not measurement error; the τ(1+ε) test in
   Results tests the measurement assumption directly, and ±20% error erases
   feedforward's advantage over the LQR.
 - The mechanical dynamics rest on two estimates: impeller inertia is 28×
-  the rotor inertia, and the damping comes from the assumed aero load. Re-
-  running with J and Bd each at ±50% (controllers fixed at their nominal
-  designs) moves the numbers — rise times span 0.04–0.16 s across the four
-  corners — but never changes the ranking: feedforward PI and LQR stay
-  ahead of standard PI, and the dip ordering FF < LQR < PI holds in every
-  corner.
+  the rotor inertia, and the damping comes from the assumed aero load. The
+  sensitivity study in the script re-runs the load-step scenario with J and
+  Bd each at ±50% (controllers fixed at their nominal designs). The numbers
+  move — rise times span 0.041–0.161 s across the four corners — but the
+  ranking never changes: feedforward PI and LQR stay ahead of standard PI,
+  and the dip ordering FF (≤0.12%) < LQR (≤0.29%) < PI (≤0.82%) holds in
+  every corner.
 - Forward Euler integration, with the convergence check stated above.
 - The speed→flow map is the affinity law at fixed nominal restriction;
   restriction changes are modelled only as shaft-torque disturbances, so

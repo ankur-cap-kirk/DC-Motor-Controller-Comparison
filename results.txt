@@ -1,32 +1,44 @@
-Kt = 0.0286 N.m/A vs Ke = 0.0286 V.s/rad  (agree to 0.03%)
+﻿Kt = 0.0286 N.m/A vs Ke = 0.0286 V.s/rad  (agree to 0.03%)
 operating point: 9.0 mNm, 0.314 A, 14.22 V  (rated: 20.5 mNm, 0.846 A, 24 V)
 open-loop poles: -27038.5, -8.20
 rank(ctrb) = 2, rank(obsv) = 2
 K_lqr = [3.6229 0.9452 -8.5714e+05]
 LQR closed-loop poles: -40612.2, -78.8919+39.3614j, -78.8919-39.3614j
 naive LQR closed-loop poles: -27301.5, -239.464, -5.63349e-05
+L_obs = [1.8129e+09 -8.9533e+07]
+observer poles: -20000, -2000
+K_pp = [3.6021 0.4537], G_pp = 8.6990e+03
+PI design: zeta = 1.50, wn = 20.9 -> Kp = 4002, Ki = 32076
 dt = 2.0e-05, Euler stability limit (closed loop) = 4.92e-05
 
 --- Nominal load ---
-ctrl                 rise    OS[%]     settle         ss
-Standard PI         0.111    -0.00      0.308      85.00
-Feedforward PI      0.086    -0.00      0.124      85.00
-LQR (Bryson)        0.086     0.04      0.115      85.00
-LQR (Q = I)           NaN   -99.98      4.000       0.02
+ctrl                       rise    OS[%]     settle         ss
+Standard PI               0.111    -0.00      0.308      85.00
+Feedforward PI            0.086    -0.00      0.124      85.00
+LQR (Bryson)              0.086     0.04      0.115      85.00
+LQR (Q = I)                 NaN   -99.98      4.000       0.02
+LQR + observer            0.086     0.04      0.115      85.00
+Pole place + prefilter    0.085    -0.00      0.114      85.00
 
 --- Filter clogging ---
-ctrl                 rise    OS[%]     settle         ss   dip[%]  rec[0.5%]
-Standard PI         0.111    -0.00      0.308      85.02     0.76      0.113
-Feedforward PI      0.086    -0.00      0.124      85.00     0.11      0.000
-LQR (Bryson)        0.086     0.04      0.115      85.00     0.26      0.000
-LQR (Q = I)           NaN   -99.99      1.500       0.02        -          -
+ctrl                       rise    OS[%]     settle         ss   dip[%]  rec[0.5%]
+Standard PI               0.111    -0.00      0.308      85.02     0.76      0.112
+Feedforward PI            0.086    -0.00      0.124      85.00     0.11      0.000
+LQR (Bryson)              0.086     0.04      0.115      85.00     0.26      0.000
+LQR (Q = I)                 NaN   -99.99      1.500       0.02        -          -
+LQR + observer            0.086     0.04      0.115      85.00     0.02      0.000
+Pole place + prefilter    0.085    -0.00      0.114      85.00     0.73      1.250
 
 --- Gusty inlet ---
-ctrl                 rise    OS[%]     settle         ss
-Standard PI         0.113     0.43      0.316      85.06
-Feedforward PI      0.087     0.06      0.126      85.01
-LQR (Bryson)        0.087     0.15      0.116      85.00
-LQR (Q = I)           NaN   -97.17      4.000       1.17
+ctrl                       rise    OS[%]     settle         ss
+Standard PI               0.113     0.43      0.315      85.06
+Feedforward PI            0.087     0.06      0.126      85.01
+LQR (Bryson)              0.087     0.15      0.116      85.00
+LQR (Q = I)                 NaN   -97.17      4.000       1.17
+LQR + observer            0.087     0.04      0.116      85.00
+Pole place + prefilter    0.086     0.41      0.116      85.12
+
+PP under 4 mNm load: 84.378 m^3/h (0.73% below target)
 
 dt check (LQR, nominal): rise 0.0856 @ dt=2e-05, 0.0855 @ dt=5e-06
 
@@ -35,6 +47,32 @@ FF load-measurement error (filter clogging):
    -0.20    0.237      0.000
     0.00    0.106      0.000
     0.20    0.002      0.000
+
+PI gain grid (nominal load):
+      Kp        Ki     rise    OS[%]    settle
+    2000      8000   0.2748   -0.000    0.7552
+    2000     16000   0.1478   -0.000    0.3414
+    2000     32000   0.1014    1.118    0.1480
+    4000     16000   0.1410   -0.000    0.5807
+    4000     32000   0.1108   -0.000    0.3082
+    4000     64000   0.0961   -0.000    0.1689
+    8000     32000   0.0866   -0.000    0.4163
+    8000     64000   0.0865   -0.000    0.2476
+    8000    128000   0.0862   -0.000    0.1628
+
+Sensitivity corners (controllers at nominal design):
+     J     Bd   PI rise   FF rise  LQR rise    PI dip    FF dip   LQR dip
+  0.50   0.50     0.061     0.041     0.047     0.819     0.115     0.291
+  0.50   1.50     0.081     0.045     0.049     0.805     0.113     0.289
+  1.50   0.50     0.144     0.124     0.123     0.725     0.102     0.240
+  1.50   1.50     0.161     0.134     0.134     0.714     0.100     0.239
+
+Observer pole placement (filter clogging):
+                 poles   dip[%]  rec[0.5%]
+      -300       -3000    0.052      0.129
+      -800       -8000    0.011      0.057
+     -2000      -20000    0.018      0.000
+      -300      -60918    4.415      0.053
 
 feedforward sweep:
    alpha     rise    OS[%]
@@ -59,7 +97,7 @@ feedforward sweep:
     0.86    0.086    -0.00
     0.88    0.086    -0.00
     0.90    0.086     0.08
-    0.92    0.086     0.20
+    0.92    0.086     0.21
     0.94    0.086     0.34
     0.96    0.085     0.48
     0.98    0.085     0.63
