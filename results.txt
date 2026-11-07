@@ -1,104 +1,104 @@
 ﻿Kt = 0.0286 N.m/A vs Ke = 0.0286 V.s/rad  (agree to 0.03%)
 operating point: 9.0 mNm, 0.314 A, 14.22 V  (rated: 20.5 mNm, 0.846 A, 24 V)
-open-loop poles: -27038.5, -8.20
+open-loop poles: -27038.5, -9.21346
 rank(ctrb) = 2, rank(obsv) = 2
-K_lqr = [3.6229 0.9452 -8.5714e+05]
-LQR closed-loop poles: -40612.2, -78.8919+39.3614j, -78.8919-39.3614j
-naive LQR closed-loop poles: -27301.5, -239.464, -5.63349e-05
-L_obs = [1.8129e+09 -8.9533e+07]
-observer poles: -20000, -2000
-K_pp = [3.6021 0.4537], G_pp = 8.6990e+03
-PI design: zeta = 1.50, wn = 20.9 -> Kp = 4002, Ki = 32076
-dt = 2.0e-05, Euler stability limit (closed loop) = 4.92e-05
+aero damping: tangent 3.820e-05 N.m.s (secant tau/w would be 2.146e-05, 44% low)
+controller Ts = 1e-04 s (10 kHz); plant RK4 substep 2e-05 s
+K_lqr = [0.3040 0.6385 -5.8774e+05]
+LQR closed-loop poles (s-equiv): -34436.4, -78.9119+39.3294j, -78.9119-39.3294j
+integrator holds the operating point at xi = 2.42e-05  (Bryson max_xi = 2.8e-05)
+naive LQR closed-loop poles (s-equiv): -27207.2, -239.506, -5.63264e-05
+observer poles (s-equiv): -27038.5, -2000 ; L_obs = [-1.282e+01 3.200e+03]
+K_pp = [0.2848 0.2991] at poles -34436.4, -78.9119 ; G_pp = 5.9896e+03
+PI design: tau_m = 0.1086 s, kdc = 1.478e-03; zeta = 1.50, wn = 20.9 -> Kp = 3928 V/(m^3/s), Ki = 32076 V/m^3
+   closed-loop poles -54.7169, -7.98309, PI zero at -8.17 (near-cancellation of the slow pole)
+PI loop:  GM 56.0 dB, PM 90.8 deg, crossover 53.3 rad/s
+LQR loop (broken at plant input): GM 28.0 dB, PM 76.8 deg, crossover 159.7 rad/s
+sensor noise: flow 0.25 m^3/h, current 10 mA (1-sigma, white at Ts)
 
---- Nominal load ---
-ctrl                       rise    OS[%]     settle         ss
-Standard PI               0.111    -0.00      0.308      85.00
-Feedforward PI            0.086    -0.00      0.124      85.00
-LQR (Bryson)              0.086     0.04      0.115      85.00
-LQR (Q = I)                 NaN   -99.98      4.000       0.02
-LQR + observer            0.086     0.04      0.115      85.00
-Pole place + prefilter    0.085    -0.00      0.114      85.00
+--- Small step 80 -> 85 ---  (rise 10-90% of step, OS % of step, settle to 5% of step)
+ctrl                       rise    OS[%]     settle    peak u    u-std
+Standard PI              0.0430     0.65     0.0613      19.0    0.268
+Feedforward PI           0.0289     6.08     0.1233      19.8    0.268
+LQR (Bryson)             0.0315     1.40     0.0451      18.8    0.774
+LQR (Q = I)                 NaN      n/a     0.8000      17.7    1.147
+LQR + observer           0.0316     1.29     0.0452      17.6    0.245
+Pole place + prefilter   0.0280     0.83     0.0378      21.5    0.362
 
---- Filter clogging ---
-ctrl                       rise    OS[%]     settle         ss   dip[%]  rec[0.5%]
-Standard PI               0.111    -0.00      0.308      85.02     0.76      0.112
-Feedforward PI            0.086    -0.00      0.124      85.00     0.11      0.000
-LQR (Bryson)              0.086     0.04      0.115      85.00     0.26      0.000
-LQR (Q = I)                 NaN   -99.99      1.500       0.02        -          -
-LQR + observer            0.086     0.04      0.115      85.00     0.02      0.000
-Pole place + prefilter    0.085    -0.00      0.114      85.00     0.73      1.250
+--- Startup (nominal load) ---  (rise 10-90%, settle to 2%, SS = mean of last 0.5 s)
+ctrl                       rise    OS[%]     settle       ss   peak i  rail[s]    u-std
+Standard PI               0.109     0.04      0.305    85.00     3.36    0.070    0.268
+Feedforward PI            0.084     0.04      0.123    85.00     3.36    0.088    0.268
+LQR (Bryson)              0.084     0.11      0.111    85.00     3.36    0.093    0.774
+LQR (Q = I)               0.084     0.00      1.500    82.06     3.36    0.098    1.147
+LQR + observer            0.084     0.11      0.110    85.00     3.36    0.094    0.239
+Pole place + prefilter    0.084     0.05      0.112    85.00     3.36    0.095    0.362
 
---- Gusty inlet ---
-ctrl                       rise    OS[%]     settle         ss
-Standard PI               0.113     0.43      0.315      85.06
-Feedforward PI            0.087     0.06      0.126      85.01
-LQR (Bryson)              0.087     0.15      0.116      85.00
-LQR (Q = I)                 NaN   -97.17      4.000       1.17
-LQR + observer            0.087     0.04      0.116      85.00
-Pole place + prefilter    0.086     0.41      0.116      85.12
+--- Filter clogging ---  (dip and recovery to 0.5% for the +4 mNm step, SS = mean over t in [2.25, 2.75] s)
+ctrl                     dip[%]  rec[0.5%] ss under load
+Standard PI                0.76      0.113       85.004
+Feedforward PI             0.11      0.000       85.005
+LQR (Bryson)               0.28      0.000       85.004
+LQR (Q = I)                   -          -       81.854   (never settled before the step)
+LQR + observer             0.29      0.000       85.004
+Pole place + prefilter     0.76      1.250       84.380
 
-PP under 4 mNm load: 84.378 m^3/h (0.73% below target)
+--- Gusty inlet ---  (t > 1 s)
+ctrl                      RMS err  max |err|    u-std
+Standard PI                 0.117      0.303    0.384
+Feedforward PI              0.019      0.057    0.389
+LQR (Bryson)                0.032      0.117    0.832
+LQR (Q = I)                 2.928      3.095    1.190
+LQR + observer              0.033      0.112    0.369
+Pole place + prefilter      0.177      0.442    0.440
 
-dt check (LQR, nominal): rise 0.0856 @ dt=2e-05, 0.0855 @ dt=5e-06
+substep check (LQR, startup): rise 0.0839 @ dt=2e-05, 0.0839 @ dt=5e-06
 
 FF load-measurement error (filter clogging):
      eps   dip[%]  rec[0.5%]
    -0.20    0.237      0.000
     0.00    0.106      0.000
-    0.20    0.002      0.000
+    0.20    0.017      0.000
 
-PI gain grid (nominal load):
-      Kp        Ki     rise    OS[%]    settle
-    2000      8000   0.2748   -0.000    0.7552
-    2000     16000   0.1478   -0.000    0.3414
-    2000     32000   0.1014    1.118    0.1480
-    4000     16000   0.1410   -0.000    0.5807
-    4000     32000   0.1108   -0.000    0.3082
-    4000     64000   0.0961   -0.000    0.1689
-    8000     32000   0.0866   -0.000    0.4163
-    8000     64000   0.0865   -0.000    0.2476
-    8000    128000   0.0862   -0.000    0.1628
+PI gain grid (small step 80 -> 85 | filter clogging):
+      Kp        Ki     rise    OS[%]    settle    u-std |   dip[%]  rec[0.5%]
+    2000      8000   0.2028     0.00    0.4068    0.137 |     1.31      0.433
+    2000     16000   0.0901     0.39    0.1333    0.136 |     1.23      0.224
+    2000     32000   0.0566     5.62    0.1597    0.136 |     1.11      0.131
+    4000     16000   0.0618     0.00    0.1936    0.273 |     0.79      0.219
+    4000     32000   0.0425     0.64    0.0612    0.273 |     0.75      0.113
+    4000     64000   0.0317     4.73    0.0396    0.273 |     0.67      0.068
+    8000     32000   0.0235     0.55    0.0405    0.547 |     0.45      0.026
+    8000     64000   0.0211     1.05    0.0295    0.547 |     0.43      0.000
+    8000    128000   0.0180     3.22    0.0228    0.547 |     0.39      0.000
 
-Sensitivity corners (controllers at nominal design):
-     J     Bd   PI rise   FF rise  LQR rise    PI dip    FF dip   LQR dip
-  0.50   0.50     0.061     0.041     0.047     0.819     0.115     0.291
-  0.50   1.50     0.081     0.045     0.049     0.805     0.113     0.289
-  1.50   0.50     0.144     0.124     0.123     0.725     0.102     0.240
-  1.50   1.50     0.161     0.134     0.134     0.714     0.100     0.239
+Sensitivity corners (controllers at nominal design, load step):
+     J    k_a |      PI      FF     LQR     OBS |      PI      FF     LQR     OBS
+              |                        rise [s] |                         dip [%]
+  0.50   0.50 |   0.062   0.041   0.041   0.041 |   0.830   0.120   0.308   0.315
+  0.50   1.50 |   0.077   0.043   0.043   0.043 |   0.805   0.117   0.305   0.311
+  1.50   0.50 |   0.144   0.123   0.123   0.123 |   0.722   0.100   0.240   0.254
+  1.50   1.50 |   0.155   0.130   0.129   0.129 |   0.703   0.098   0.238   0.252
 
 Observer pole placement (filter clogging):
-                 poles   dip[%]  rec[0.5%]
-      -300       -3000    0.052      0.129
-      -800       -8000    0.011      0.057
-     -2000      -20000    0.018      0.000
-      -300      -60918    4.415      0.053
+       poles (s-equiv)   dip[%]  rec[0.5%]    u-std
+      -500      -27039    0.338      0.000    0.114
+     -2000      -27039    0.294      0.000    0.239
+     -8000      -27039    0.288      0.000    0.476
+    -20000      -27039    0.285      0.000    0.677
+     -2000      -20000    0.289      0.000    0.426
 
-feedforward sweep:
+feedforward sweep (startup):
    alpha     rise    OS[%]
-    0.50    0.090    -0.00
-    0.52    0.090    -0.00
-    0.54    0.089    -0.00
-    0.56    0.089    -0.00
-    0.58    0.089    -0.00
-    0.60    0.088    -0.00
-    0.62    0.088    -0.00
-    0.64    0.088    -0.00
-    0.66    0.087    -0.00
-    0.68    0.087    -0.00
-    0.70    0.087    -0.00
-    0.72    0.087    -0.00
-    0.74    0.087    -0.00
-    0.76    0.086    -0.00
-    0.78    0.086    -0.00
-    0.80    0.086    -0.00
-    0.82    0.086    -0.00
-    0.84    0.086    -0.00
-    0.86    0.086    -0.00
-    0.88    0.086    -0.00
-    0.90    0.086     0.08
-    0.92    0.086     0.21
-    0.94    0.086     0.34
-    0.96    0.085     0.48
-    0.98    0.085     0.63
-    1.00    0.085     0.78
+    0.50    0.089     0.04
+    0.55    0.088     0.04
+    0.60    0.087     0.04
+    0.65    0.086     0.04
+    0.70    0.086     0.04
+    0.75    0.085     0.04
+    0.80    0.085     0.04
+    0.85    0.084     0.04
+    0.90    0.084     0.10
+    0.95    0.084     0.43
+    1.00    0.084     0.79
+
