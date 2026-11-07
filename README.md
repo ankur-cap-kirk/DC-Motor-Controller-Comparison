@@ -401,6 +401,10 @@ integration check. Runs in under a minute.
   grid shows a 2× more aggressive PI out-tracks the LQR at lower noise; the
   LQR's structural advantages are the dip and the observer's noise
   performance, not the headline rise time.
+- **The feedforward path assumes the load torque is measured.** No real
+  duct fan has a shaft-torque sensor; the ε test above shows ±20% error in
+  that measurement erases feedforward's dip advantage over the LQR, and the
+  α sweep tests feedforward authority, not measurement error.
 - **LQR's classical margin guarantees do not survive input saturation.** The
   reported margins (GM 28 dB, PM 77°) are for the linear loop.
 - **Noise is white and the sensors are idealised.** Quantisation,
